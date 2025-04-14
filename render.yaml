@@ -1,8 +1,8 @@
+# render.yaml
 services:
   - type: web
     name: fbimagecut
     env: python
     plan: free
     buildCommand: ""
-    startCommand: gunicorn flask_overlay_app:app
-    autoDeploy: true
+    startCommand: gunicorn fbimagecut.flask_overlay_app:app
