@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Env
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Gradio files
+gradio_cached_examples/
+gradio_output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
