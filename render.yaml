@@ -5,4 +5,4 @@ services:
     env: python
     plan: free
     buildCommand: ""
-    startCommand: gunicorn fbimagecut.flask_overlay_app:app
+    startCommand: gunicorn flask_overlay_app:app
