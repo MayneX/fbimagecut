@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, render_template, request, url_for, jsonify
 from werkzeug.utils import secure_filename
 from PIL import Image, ImageOps
 from pathlib import Path
 import logging
 import os
 import time
+import threading
 
 
 logging.basicConfig(
@@ -23,67 +24,76 @@ STENCIL_FILENAME = "stencil_1080x1920.png"
 STENCIL_PATH = STATIC_DIR / STENCIL_FILENAME
 
 EXPIRATION_SECONDS = 15 * 60  # 15 minutes
+CLEANUP_INTERVAL = 5 * 60     # run cleanup every 5 minutes
 
 
-stencil = Image.open(STENCIL_PATH).convert("RGBA")
-
-
-def cleanup_static_folder():
-    now = time.time()
-    for file in STATIC_DIR.iterdir():
-        if file.name == STENCIL_FILENAME:
-            continue
-        if file.is_file():
+def background_cleanup():
+    while True:
+        now = time.time()
+        for file in STATIC_DIR.iterdir():
             try:
-                if now - file.stat().st_mtime > EXPIRATION_SECONDS:
+                if file.resolve() == STENCIL_PATH.resolve():
+                    continue
+                if file.is_file() and (now - file.stat().st_mtime > EXPIRATION_SECONDS):
                     file.unlink()
-                    logger.info("Deleted expired file: %s", file.name)
+                    logger.info("[CLEANUP] Deleted expired file: %s", file.name)
             except Exception as e:
-                logger.warning("Failed to delete file: %s", file.name)
+                logger.warning("[CLEANUP] Failed to delete file: %s", file.name)
+        time.sleep(CLEANUP_INTERVAL)
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    video_url = None
-    image_url = None
+    return render_template("index.html", stencil_url=STENCIL_FILENAME)
 
-    if request.method == "POST":
-        file = request.files.get("image") or request.files.get("video")
 
-        if not file or not file.filename:
-            logger.warning("No file selected for upload")
-            return render_template("index.html", video_url=None, image_url=None, stencil_url=STENCIL_FILENAME)
+@app.route("/upload", methods=["POST"])
+def upload():
+    stencil = Image.open(STENCIL_PATH).convert("RGBA")
 
-        filename = secure_filename(file.filename)
-        file_ext = Path(filename).suffix.lower()
+    file = request.files.get("file")
+    if not file or not file.filename:
+        logger.warning("Empty file upload")
+        return jsonify({"error": "No file received"}), 400
 
-        try:
-            if file_ext in [".jpg", ".jpeg", ".png"]:
-                image = Image.open(file.stream).convert("RGBA")
-                image = ImageOps.fit(image, TEMPLATE_SIZE, method=Image.BICUBIC, centering=(0.5, 0.5))
-                result = Image.alpha_composite(image, stencil)
-                output_filename = f"output_{filename}"
-                output_path = STATIC_DIR / output_filename
-                result.save(output_path)
-                logger.info("Image uploaded and processed: %s", filename)
-                image_url = url_for("static", filename=output_filename)
+    filename = secure_filename(file.filename)
+    file_ext = Path(filename).suffix.lower()
 
-            elif file_ext == ".mp4":
-                save_path = STATIC_DIR / filename
-                file.save(save_path)
-                logger.info("Video uploaded: %s", filename)
-                video_url = url_for("static", filename=filename)
+    try:
+        if file_ext in [".jpg", ".jpeg", ".png"]:
+            image = Image.open(file.stream).convert("RGBA")
+            image = ImageOps.fit(image, TEMPLATE_SIZE, method=Image.BICUBIC, centering=(0.5, 0.5))
+            result = Image.alpha_composite(image, stencil)
+            output_filename = f"output_{filename}"
+            output_path = STATIC_DIR / output_filename
+            result.save(output_path)
+            logger.info("Processed image: %s", filename)
+            return jsonify({
+                "type": "image",
+                "url": url_for("static", filename=output_path.name),
+                "stencil": url_for("static", filename=STENCIL_FILENAME),
+            })
 
-            else:
-                logger.warning("Unsupported file type: %s", filename)
+        elif file_ext == ".mp4":
+            save_path = STATIC_DIR / filename
+            file.save(save_path)
+            logger.info("Saved video: %s", filename)
+            return jsonify({
+                "type": "video",
+                "url": url_for("static", filename=filename),
+                "stencil": url_for("static", filename=STENCIL_FILENAME),
+            })
 
-        except Exception as e:
-            logger.exception("Failed to handle uploaded file: %s", filename)
+        else:
+            logger.warning("Unsupported file type: %s", filename)
+            return jsonify({"error": "Unsupported file type"}), 400
 
-    cleanup_static_folder()
-    return render_template("index.html", video_url=video_url, image_url=image_url, stencil_url=STENCIL_FILENAME)
+    except Exception as e:
+        logger.exception("Failed to handle file upload")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
     os.makedirs(STATIC_DIR, exist_ok=True)
+    threading.Thread(target=background_cleanup, daemon=True).start()
     app.run(debug=True)

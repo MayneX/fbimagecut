@@ -1,3 +1,4 @@
 Flask>=2.3
 Pillow>=9.0
 pytest
+beautifulsoup4
