@@ -22,3 +22,7 @@ Thumbs.db
 
 # VSCode
 .vscode/
+
+# Keep only stencil
+static/*
+!static/stencil_1080x1920.png
