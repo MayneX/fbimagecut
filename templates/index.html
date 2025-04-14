@@ -11,50 +11,31 @@
       padding: 2rem;
       background: #f9f9f9;
       color: #222;
+      text-align: center;
     }
 
     h1 {
-      text-align: center;
-      margin-bottom: 2rem;
       font-size: 1.75rem;
+      margin-bottom: 1rem;
     }
 
-    .form-section {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 2rem;
+    .dropzone {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 3rem;
+      background: white;
+      max-width: 400px;
+      margin: 0 auto 2rem;
+      transition: background 0.2s;
     }
 
-    .form-row {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    input[type="file"] {
-      padding: 0.5rem;
-    }
-
-    button {
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      background-color: #0057ff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #003fcb;
+    .dropzone.dragover {
+      background: #eaf4ff;
     }
 
     .container {
       max-width: 360px;
-      margin: 0 auto;
+      margin: 2rem auto;
       position: relative;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
       border-radius: 8px;
@@ -78,33 +59,67 @@
   </style>
 </head>
 <body>
+  <h1>Drop Image or Video</h1>
+  <div class="dropzone" id="dropzone">
+    <p>Drag & drop a .png/.jpg/.mp4 file here</p>
+    <input type="file" id="fileInput" hidden />
+    <button onclick="document.getElementById('fileInput').click()">Or choose a file</button>
+  </div>
 
-  <h1>Upload Image or Video</h1>
+  <div id="preview"></div>
 
-  <form method="POST" enctype="multipart/form-data" class="form-section">
-    <div class="form-row">
-      <input type="file" name="image" accept="image/*" />
-      <button type="submit">Upload Image</button>
-    </div>
-    <div class="form-row">
-      <input type="file" name="video" accept="video/mp4" />
-      <button type="submit">Upload Video</button>
-    </div>
-  </form>
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const preview = document.getElementById("preview");
 
-  {% if image_url %}
-    <div class="container">
-      <img src="{{ image_url }}" class="preview" alt="Processed Image" />
-      <img src="{{ url_for('static', filename=stencil_url) }}" class="overlay" alt="Stencil" />
-    </div>
-  {% endif %}
+    dropzone.addEventListener("dragover", e => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
 
-  {% if video_url %}
-    <div class="container">
-      <video src="{{ video_url }}" autoplay muted controls></video>
-      <img src="{{ url_for('static', filename=stencil_url) }}" class="overlay" alt="Stencil" />
-    </div>
-  {% endif %}
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("dragover");
+    });
 
+    dropzone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener("change", () => {
+      handleFiles(fileInput.files);
+    });
+
+    function handleFiles(files) {
+      if (!files.length) return;
+      const formData = new FormData();
+      formData.append("file", files[0]);
+
+      fetch("/upload", {
+        method: "POST",
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        preview.innerHTML = `
+          <div class="container">
+            ${data.type === "video" ?
+              `<video src="${data.url}" autoplay muted controls></video>` :
+              `<img src="${data.url}" class="preview" alt="Preview" />`
+            }
+            <img src="${data.stencil}" class="overlay" alt="Stencil" />
+          </div>
+        `;
+      })
+      .catch(() => alert("Upload failed"));
+    }
+  </script>
 </body>
 </html>
